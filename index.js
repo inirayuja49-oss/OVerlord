@@ -2,53 +2,71 @@ import * as THREE from '../three.js-master/build/three.module.js'
 import { OrbitControls } from '../three.js-master/examples/jsm/controls/OrbitControls.js'
 import { TextGeometry } from '../three.js-master/examples/jsm/geometries/TextGeometry.js'
 import { FontLoader } from '../three.js-master/examples/jsm/loaders/FontLoader.js'
+import { GLTFLoader } from '../three.js-master/examples/jsm/loaders/GLTFLoader.js' // membuka format .gltf dan .glb (model 3D Dark Warrior)
 
 let scene, thirdPersonCam, firstPersonCam, renderer, orbitControls, ambientLight
 let currentCam, spotLight, directionalLight
+let darkWarrior, spellCircleGroup // new
 
 let init = () => {
-    scene = new THREE.Scene()
+    scene = new THREE.Scene() // buat dunia kosong
 
-    let w = window.innerWidth
+    let w = window.innerWidth // ukuran layar
     let h = window.innerHeight
     let aspect = w/h
+    // lebar lensa - ukuran layar - terdekat - terjauh
+    thirdPersonCam = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000) // meniru human eyes
+    thirdPersonCam.position.set(6, 3, 5) // cam melayang agak ke atas dan samping kanan
+    thirdPersonCam.lookAt(0,0,0) // cam melihat ke titik tengah pusat dunia
 
-    thirdPersonCam = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000)
-    thirdPersonCam.position.set(6, 3, 5)
-    thirdPersonCam.lookAt(0,0,0)
-
-    renderer = new THREE.WebGLRenderer( {antialias: true} )
+    renderer = new THREE.WebGLRenderer( {antialias: true} ) // mesin pembuat gambar, pinggiran obj tak gerigi
     renderer.setSize(w, h)
-    renderer.shadowMap.enabled = true
+    renderer.shadowMap.enabled = true // aktifkan fitur bayangan
     renderer.shadowMap.type = THREE.PCFShadowMap
-    document.body.appendChild(renderer.domElement)
+    // renderer.outputColorSpace = THREE.SRGBColorSpace
+    document.body.appendChild(renderer.domElement) // tempel hasil render (canvas) ke HTML (<body>)
 
-    orbitControls = new OrbitControls(thirdPersonCam, renderer.domElement)
-    orbitControls.target.set( 0, 0, 0 );
+    orbitControls = new OrbitControls(thirdPersonCam, renderer.domElement) // klik-kiri mouse tahan,
+    orbitControls.target.set( 0, 0, 0 ); // untuk putar dan scroll + zoom in/out keliling titik tengah
     
-    //--------------------------------------------------------------------- light
-    ambientLight = new THREE.AmbientLight('#FFFFFF', 0.7)
-    scene.add(ambientLight)
+    //--------------------------------------------------------------------- lighting
+    ambientLight = new THREE.AmbientLight('#FFFFFF', 0.7) // cahaya ruang/ sun terik
+    scene.add(ambientLight) // menerangi rata, yang membelakangi tidak hitam total
 
-    // spotLight = new THREE.SpotLight('#FFFFFF', 1.2)//-- kok gk ad cahayany??
-    // spotLight.castShadow = true
-    // spotLight.distance = 1000
-    // //spotLight.position.set(0,10,0)
+    spotLight = new THREE.SpotLight('#FFFFFF', 1.2)//lampu sorot teather, lebih kuat dari ambient
+    spotLight.position.set(0,30,0) // 10 jadi 30 biar lebi luas jangkauan
+    spotLight.distance = 1000
+    spotLight.castShadow = true
+    // spotLight.shadow.bias = -0.0001  // <--- TAMBAHKAN INI (Supaya bayangan gak nempel di baju)
+
+    // Resolusi bayangan biar tidak kotak
+    spotLight.shadow.mapSize.width = 2048 // resolusi bayangan tajam & halus , kalau kecil kotak2 pecah
+    spotLight.shadow.mapSize.height = 2048
+    
+    // Agar spotlight ngarah ke tengah
+    spotLight.target.position.set(0, 0, 3)
+    scene.add(spotLight)
+    scene.add(spotLight.target) // target harus add ke scene
+
     // spotLight.position.y = 10
-    // spotLight.shadow.mapSize.width = 2048
-    // spotLight.shadow.mapSize.height = 2048
-
     // let spotLightHelper = new THREE.SpotLightHelper(spotLight)
     // scene.add(spotLight, spotLightHelper)
-
+    
+    // Matahari, dari arah sangat jauh sehingga sejajar tidak melebar
     directionalLight = new THREE.DirectionalLight('#FFFFEE', 0.5) //-- muncul cmn redup
     directionalLight.position.set(5,2,8)
     directionalLight.castShadow = true
-
+    // directionalLight.shadow.bias = -0.0001 // <--- TAMBAHKAN INI JUGA
+    // Garis bantu (garis lakban supaya tau posisi lampu)
     let directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight)
-    scene.add(directionalLight, directionalLightHelper)
+    scene.add(directionalLight, directionalLightHelper) // kotak + garis2 kuning
 
-    currentCam = thirdPersonCam
+    // Point Light Sihir
+    let pointLight = new THREE.PointLight('#FFD700', 2, 3)
+    pointLight.position.set(0, 0.5, 0)
+    scene.add(pointLight)
+
+    currentCam = thirdPersonCam // cam live (dari mata ke 3) mau ganti = firstPersonCam
 }
 
 let render = () => {
@@ -59,8 +77,11 @@ let render = () => {
 
 window.onload = async () => {
     init()
+    skybox()
     ground()
     hamster()
+    loadDarkWarrior()
+    createSpellCircle()
     treeMiddle()
     treeRight()
     treeLeft()
@@ -94,6 +115,7 @@ let ground = () =>{
 
     scene.add(mesh)
 }
+
 let hamster = () =>{
     let bodygeometry = new THREE.BoxGeometry(2,2,2)
     
@@ -284,7 +306,7 @@ let text = async () =>{
     let loader = new FontLoader()
 
     let font = await loader.loadAsync('../three.js-master/examples/fonts/helvetiker_bold.typeface.json')
-    let textGeometry = new TextGeometry('Overlord', {
+    let textGeometry = new TextGeometry('OVerlord', {
         size: 1,
         height: 0.2,
         depth: 1,
@@ -300,4 +322,90 @@ let text = async () =>{
     textMesh.receiveShadow = true
 
     scene.add(textMesh)
+}
+
+let skybox = () => {
+    let loader = new THREE.CubeTextureLoader()
+    let texture = loader.load([
+        './assets/skybox/side-1.png', // PX (Kanan)
+        './assets/skybox/side-3.png', // NX (Kiri) 
+        './assets/skybox/top.png', // PY (Atas)
+        './assets/skybox/bottom.png', // NY (Bawah)
+        './assets/skybox/side-4.png', // PZ (Depan)
+        './assets/skybox/side-2.png' // NZ (Belakang)
+    ])
+    // matikan fitur Mipmaps supaya gambar tak persegi tetep bisa jalan
+    texture.generateMipmaps = false
+    texture.minFilter = THREE.LinearFilter
+
+    scene.background = texture   // Ini untuk background visual
+    scene.environment = texture  // <--- TAMBAHKAN INI (Biar Logam tidak hitam)
+}
+
+let loadDarkWarrior = () => {
+    let loader = new GLTFLoader()
+
+    // Ganti path sesuai letak file GLTF kamu
+    loader.load('../assets/models/momonga_ainz_ooal_gown/scene.gltf', (gltf) => {
+        darkWarrior = gltf.scene
+
+        darkWarrior.scale.set(0.01, 0.01, 0.01)
+        darkWarrior.position.set(0, -0.01, 3)
+        darkWarrior.rotation.set(0, Math.PI/2, 0)
+
+        darkWarrior.traverse((child) => {
+            if(child.isMesh){
+                child.castShadow = true
+                child.receiveShadow = true
+                
+            }
+        })
+        scene.add(darkWarrior)
+    })
+}
+
+let createSpellCircle = () => {
+    spellCircleGroup = new THREE.Group()
+    // Bahan (Material)
+    let material = new THREE.MeshPhongMaterial({
+        color: 0xDAA520, // GoldenRod
+        emissive: 0xFFCC00, // bersinar kuning
+        emissiveIntensity: 2, // kekuatan sinar
+        shininess: 100,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    })
+
+    // 1. Inner Ring
+    let innerGeo = new THREE.RingGeometry(1, 1.2, 64)
+    let innerRing = new THREE.Mesh(innerGeo, material)
+    innerRing.rotation.x = -Math.PI/2 // tidurkan di tanah
+    innerRing.position.set(0, 0.02, 0)
+    // 2. Outer Ring
+    let outerGeo = new THREE.RingGeometry(1.8, 2, 64)
+    let outerRing = new THREE.Mesh(outerGeo, material)
+    outerRing.rotation.x = -Math.PI/2
+    outerRing.position.set(0, 0.02, 0) // Y = 0.02
+    
+    // 3. Pointers
+    let pointerGeo = new THREE.BoxGeometry(0.05, 4, 0.01)
+    // POINTER 1: ikut soal
+    let pointer1 = new THREE.Mesh(pointerGeo, material)
+    pointer1.rotation.set(Math.PI/2, 0, Math.PI/2)
+    pointer1.position.set(0, 0.01, 0) // Y = 0.01
+
+    // POINTER 2: Putar biar jadi tanda (+) seperti figure 2
+    let pointer2 = new THREE.Mesh(pointerGeo, material)
+    pointer2.rotation.set(Math.PI/2, 0, 0) // Rotasi beda biar menyilang
+    pointer2.position.set(0, 0.01, 0)
+
+    spellCircleGroup.add(innerRing)
+    spellCircleGroup.add(outerRing)
+    spellCircleGroup.add(pointer1)
+    spellCircleGroup.add(pointer2)
+
+    spellCircleGroup.position.set(0, 0, 3) // nempel di dark warrior
+
+    scene.add(spellCircleGroup)
 }
