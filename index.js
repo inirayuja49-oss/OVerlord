@@ -409,3 +409,192 @@ let createSpellCircle = () => {
 
     scene.add(spellCircleGroup)
 }
+
+
+// Camera + Controls
+const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+);
+
+camera.position.set(6, 3, 5);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.update();
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+
+const spot = new THREE.SpotLight(0xffffff, 1.2);
+spot.position.set(0, 10, 0);
+spot.castShadow = true;
+spot.shadow.mapSize.width = 2048;
+spot.shadow.mapSize.height = 2048;
+scene.add(spot);
+
+const dir = new THREE.DirectionalLight(0xffffee, 0.5);
+dir.position.set(5, 2, 8);
+scene.add(dir);
+
+// Ground
+const groundMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(25, 2, 25),
+    new THREE.MeshStandardMaterial({ color: 0xffffff })
+);
+
+groundMesh.position.set(0, -1, 0);
+groundMesh.receiveShadow = true;
+scene.add(groundMesh);
+
+// Load Dark Warrior Model
+let warrior = null;
+
+// Ubah path di bawah jika model kamu ada di folder assets/, misal: "assets/momonga_ainz_ooal_gown/scene.gltf"
+const loader = new GLTFLoader();
+loader.load(
+    "momonga_ainz_ooal_gown/scene.gltf",
+    (gltf) => {
+        warrior = gltf.scene;
+        warrior.position.set(0, -0.01, 3);
+        warrior.scale.set(0.01, 0.01, 0.01);
+        warrior.rotation.y = Math.PI / 2;
+
+        warrior.traverse(obj => {
+            if (obj.isMesh) obj.castShadow = true;
+        });
+
+        scene.add(warrior);
+
+        initSpellCircle();
+    },
+    undefined,
+    (err) => {
+        console.error("Error loading GLTF:", err);
+    }
+);
+
+// Spell Circle + Light
+let spellParent, spellLight;
+let spellOn = false;
+
+function initSpellCircle() {
+    const mat = new THREE.MeshPhongMaterial({
+        color: 0xDAA520,
+        emissive: 0xFFCC00,
+        emissiveIntensity: 2,
+        shininess: 100,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    });
+
+    spellParent = new THREE.Group();
+
+    // inner ring
+    const ring1 = new THREE.Mesh(
+        new THREE.RingGeometry(1, 1.2, 64),
+        mat
+    );
+    ring1.rotation.x = Math.PI / 2;
+    spellParent.add(ring1);
+
+    // outer ring
+    const ring2 = new THREE.Mesh(
+        new THREE.RingGeometry(1.8, 2, 64),
+        mat
+    );
+    ring2.rotation.x = Math.PI / 2;
+    spellParent.add(ring2);
+
+    // pointers
+    const barGeo = new THREE.BoxGeometry(0.05, 4, 0.01);
+    const ptr1 = new THREE.Mesh(barGeo, mat);
+    ptr1.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+    const ptr2 = ptr1.clone();
+    ptr2.rotation.z = -Math.PI / 2;
+
+    spellParent.add(ptr1, ptr2);
+
+    // light effect
+    spellLight = new THREE.PointLight(0xFFD700, 2, 3);
+    spellLight.position.set(0, 0.5, 0);
+
+    spellParent.visible = false;
+    spellLight.visible = false;
+
+    scene.add(spellParent);
+    scene.add(spellLight);
+}
+
+// Input
+const key = {};
+
+document.addEventListener("keydown", (e) => {
+    key[e.key.toLowerCase()] = true;
+
+    if (e.code === "Space") {
+        spellOn = !spellOn;
+
+        if (spellParent) {
+            spellParent.visible = spellOn;
+            spellLight.visible = spellOn;
+        }
+    }
+});
+
+document.addEventListener("keyup", (e) => {
+    key[e.key.toLowerCase()] = false;
+});
+
+// Movement & Rotation Logic
+const speed = 0.1;
+const rotSpeed = 0.05;
+
+function handleMovement() {
+    if (!warrior) return;
+
+    // rotate with Q / E
+    if (key["q"]) warrior.rotation.y += rotSpeed;
+    if (key["e"]) warrior.rotation.y -= rotSpeed;
+
+    const dir = new THREE.Vector3();
+
+    if (key["w"]) dir.z -= 1;
+    if (key["s"]) dir.z += 1;
+    if (key["a"]) dir.x -= 1;
+    if (key["d"]) dir.x += 1;
+
+    if (dir.length() !== 0) {
+        dir.normalize();
+        dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), warrior.rotation.y);
+        warrior.position.addScaledVector(dir, speed);
+    }
+
+    // spell follow player
+    if (spellParent) {
+        spellParent.position.set(warrior.position.x, 0.02, warrior.position.z);
+    }
+
+    if (spellLight) {
+        spellLight.position.set(warrior.position.x, 0.5, warrior.position.z);
+    }
+}
+
+// Animate
+function animate() {
+    requestAnimationFrame(animate);
+    handleMovement();
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// Resize
+window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
