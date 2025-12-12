@@ -36,7 +36,7 @@ let init = () => {
     renderer.shadowMap.enabled = true // aktifkan fitur bayangan
     renderer.shadowMap.type = THREE.PCFShadowMap
     // renderer.outputColorSpace = THREE.SRGBColorSpace
-    document.body.appendChild(renderer.domElement) // tempel hasil render (canvas) ke HTML (<body>)
+    document.body.appendChild(renderer.domElement) // tempel hasil render (canvas) ke HTML (body)
 
     orbitControls = new OrbitControls(thirdPersonCam, renderer.domElement) // klik-kiri mouse tahan,
     orbitControls.target.set( 0, 0, 0 ); // untuk putar dan scroll + zoom in/out keliling titik tengah
@@ -49,7 +49,7 @@ let init = () => {
     spotLight.position.set(0,30,0) // 10 jadi 30 biar lebi luas jangkauan
     spotLight.distance = 1000
     spotLight.castShadow = true
-    spotLight.shadow.bias = -0.0001  // <--- TAMBAHKAN INI (Supaya bayangan gak nempel di baju)
+    spotLight.shadow.bias = -0.0001  // Supaya bayangan gak nempel di baju
 
     // Resolusi bayangan biar tidak kotak
     spotLight.shadow.mapSize.width = 2048 // resolusi bayangan tajam & halus , kalau kecil kotak2 pecah
@@ -467,7 +467,7 @@ let skybox = () => {
     texture.minFilter = THREE.LinearFilter
 
     scene.background = texture   // Ini untuk background visual
-    scene.environment = texture  // <--- TAMBAHKAN INI (Biar Logam tidak hitam)
+    scene.environment = texture  // Biar Logam tidak hitam
 }
 
 let loadDarkWarrior = () => {
@@ -523,7 +523,7 @@ let createSpellCircle = () => {
     pointer1.rotation.set(Math.PI/2, 0, Math.PI/2)
     pointer1.position.set(0, 0.01, 0) // Y = 0.01
 
-    // POINTER 2: Putar biar jadi tanda (+) seperti figure 2
+    // POINTER 2: Putar biar jadi tanda (+) 
     let pointer2 = new THREE.Mesh(pointerGeo, material)
     pointer2.rotation.set(Math.PI/2, 0, 0) // Rotasi beda biar menyilang
     pointer2.position.set(0, 0.01, 0)
