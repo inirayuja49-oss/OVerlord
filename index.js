@@ -6,7 +6,11 @@ import { GLTFLoader } from '../three.js-master/examples/jsm/loaders/GLTFLoader.j
 
 let scene, thirdPersonCam, firstPersonCam, renderer, orbitControls, ambientLight
 let currentCam, spotLight, directionalLight
-let darkWarrior, spellCircleGroup // new
+let darkWarrior, spellCircleGroup , pointLight 
+let raycaster, mouse // interaksi mouse
+
+// Status tombol keyboard
+let keys = { w: false, a: false, s: false, d: false, q: false, e: false }
 
 let init = () => {
     scene = new THREE.Scene() // buat dunia kosong
@@ -14,10 +18,18 @@ let init = () => {
     let w = window.innerWidth // ukuran layar
     let h = window.innerHeight
     let aspect = w/h
+
+    // 1. CAMERA 3rd PERSON
     // lebar lensa - ukuran layar - terdekat - terjauh
     thirdPersonCam = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000) // meniru human eyes
     thirdPersonCam.position.set(6, 3, 5) // cam melayang agak ke atas dan samping kanan
     thirdPersonCam.lookAt(0,0,0) // cam melihat ke titik tengah pusat dunia
+    // CAMERA 1st PERSON
+    firstPersonCam = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000)
+    firstPersonCam.position.set(0, 1.8, 0)
+
+    raycaster = new THREE.Raycaster()
+    mouse = new THREE.Vector2()
 
     renderer = new THREE.WebGLRenderer( {antialias: true} ) // mesin pembuat gambar, pinggiran obj tak gerigi
     renderer.setSize(w, h)
@@ -37,7 +49,7 @@ let init = () => {
     spotLight.position.set(0,30,0) // 10 jadi 30 biar lebi luas jangkauan
     spotLight.distance = 1000
     spotLight.castShadow = true
-    // spotLight.shadow.bias = -0.0001  // <--- TAMBAHKAN INI (Supaya bayangan gak nempel di baju)
+    spotLight.shadow.bias = -0.0001  // <--- TAMBAHKAN INI (Supaya bayangan gak nempel di baju)
 
     // Resolusi bayangan biar tidak kotak
     spotLight.shadow.mapSize.width = 2048 // resolusi bayangan tajam & halus , kalau kecil kotak2 pecah
@@ -56,27 +68,140 @@ let init = () => {
     directionalLight = new THREE.DirectionalLight('#FFFFEE', 0.5) //-- muncul cmn redup
     directionalLight.position.set(5,2,8)
     directionalLight.castShadow = true
-    // directionalLight.shadow.bias = -0.0001 // <--- TAMBAHKAN INI JUGA
+    directionalLight.shadow.bias = -0.0001 
     // Garis bantu (garis lakban supaya tau posisi lampu)
     let directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight)
     scene.add(directionalLight, directionalLightHelper) // kotak + garis2 kuning
 
     // Point Light Sihir
-    let pointLight = new THREE.PointLight('#FFD700', 2, 3)
+    pointLight = new THREE.PointLight('#FFD700', 2, 3)
     pointLight.position.set(0, 0.5, 0)
     scene.add(pointLight)
 
     currentCam = thirdPersonCam // cam live (dari mata ke 3) mau ganti = firstPersonCam
 }
 
+let setupInput = () => {
+    // Saat tombol ditekan
+    window.addEventListener('keydown', (event) => {
+        let key = event.key.toLowerCase()
+        if(keys[key] !== undefined){
+            keys[key] = true
+        }
+        if(event.code == 'Space'){
+            if(spellCircleGroup){
+                spellCircleGroup.visible = !spellCircleGroup.visible
+                pointLight.visible = spellCircleGroup.visible
+            }
+        }
+
+        // Logic Ganti Cam (Tombol C)
+        if(key == 'c'){
+            if(currentCam == thirdPersonCam){
+                currentCam = firstPersonCam
+                orbitControls.enabled = false // matikan orbit saat fps
+            }
+            else{
+                currentCam = thirdPersonCam
+                orbitControls.enabled = true
+            }
+        }
+    })
+
+    // saat tombol dilepas
+    window.addEventListener('keyup', (event) =>{
+        let key = event.key.toLowerCase()
+        if(keys[key] !== undefined){
+            keys[key] = false
+        }
+    })
+
+    // logic klik mouse (Raycast Hamster)
+    window.addEventListener('pointerdown', (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1
+        mouse.y = - (event.clientY / window.innerHeight) * 2 + 1
+
+        raycaster.setFromCamera(mouse, currentCam)
+        let intersects = raycaster.intersectObjects(scene.children)
+
+        if(intersects.length > 0){
+            let hitObj = intersects[0].object
+        // apakah yang kena si hamster
+        if (hitObj.geometry.type === 'BoxGeometry' && hitObj.position.x === 3) {
+                let sadTex = '../assets/textures/hamsuke/front_sad.png'
+                let happyTex = '../assets/textures/hamsuke/front_happy.png'
+                let loader = new THREE.TextureLoader()
+
+                if (!hitObj.isSad) {
+                    hitObj.material[4].map = loader.load(sadTex)
+                    hitObj.isSad = true
+                } else {
+                    hitObj.material[4].map = loader.load(happyTex)
+                    hitObj.isSad = false
+                }
+                hitObj.material[4].needsUpdate = true
+            }
+        }
+    })
+}
+
+// Logic Gerakan (Update Movement) 
+let updateMovement = () => {
+    if (!darkWarrior) return // Jangan jalan kalau model belum muncul
+
+    let moveSpeed = 0.1 
+    let rotSpeed = 0.05 
+
+    // ROTASI (Q/E) 
+    if (keys.q) darkWarrior.rotation.y += rotSpeed
+    if (keys.e) darkWarrior.rotation.y -= rotSpeed
+
+    // GERAKAN (WASD) 
+    // pakai Vector math supaya geraknya relatif terhadap arah hadap karakter
+    let forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), darkWarrior.rotation.y)
+    let right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), darkWarrior.rotation.y)
+
+    // Perhatikan arah minus/plus disesuaikan dengan koordinat three.js
+    if (keys.w) darkWarrior.position.add(forward.multiplyScalar(moveSpeed))  // Maju
+    if (keys.s) darkWarrior.position.add(forward.multiplyScalar(-moveSpeed)) // Mundur
+    if (keys.a) darkWarrior.position.add(right.multiplyScalar(moveSpeed))    // Kiri
+    if (keys.d) darkWarrior.position.add(right.multiplyScalar(-moveSpeed))   // Kanan
+
+    // UPDATE POSISI SPELL & LIGHT
+    if (spellCircleGroup) {
+        spellCircleGroup.position.copy(darkWarrior.position)
+        spellCircleGroup.position.y = 0.02
+        
+        pointLight.position.set(
+            darkWarrior.position.x, 
+            darkWarrior.position.y + 0.5, 
+            darkWarrior.position.z
+        )
+    }
+
+    // UPDATE POSISI FIRST PERSON CAM
+    if (currentCam === firstPersonCam) {
+        firstPersonCam.position.set(
+            darkWarrior.position.x,
+            darkWarrior.position.y + 1.8,
+            darkWarrior.position.z
+        )
+        firstPersonCam.rotation.copy(darkWarrior.rotation)
+        // Putar 90 derajat karena model aslinya menghadap samping
+        firstPersonCam.rotation.y += Math.PI / 2
+    }
+}
+
 let render = () => {
     requestAnimationFrame(render)
+    updateMovement() // logic gerak dicall tiap frame
     orbitControls.update();
     renderer.render(scene, currentCam)
 }
 
 window.onload = async () => {
     init()
+    setupInput()
     skybox()
     ground()
     hamster()
@@ -93,9 +218,12 @@ window.onresize = () =>{ //--it works maybe??
     let w = window.innerWidth
     let h = window.innerHeight
     renderer.setSize(w, h)
-    currentCam.aspect = w/h
 
-    currentCam.updateProjectionMatrix()
+    thirdPersonCam.aspect = w/h
+    thirdPersonCam.updateProjectionMatrix()
+
+    firstPersonCam.aspect = w/h
+    firstPersonCam.updateProjectionMatrix()
 }
 
 let ground = () =>{
